@@ -1,7 +1,7 @@
 use base64::{engine::general_purpose, Engine};
 use key_share_service::{
-    encrypt, get_public_key, threshold_decrypt, DecryptionResponse, EncryptionResponse,
-    PublicKeyResponse, SharedState, THRESHOLD,
+    get_public_key, threshold_decrypt, DecryptionResponse, PublicKeyResponse, SharedState,
+    THRESHOLD,
 };
 use rocket::{
     http::{ContentType, Status},
@@ -41,38 +41,31 @@ async fn test_get_public_key() -> Result<(), Box<dyn std::error::Error>> {
 async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
     let threshold = 2;
     let sec_key_share = SecretKeySet::random(threshold, &mut rand::thread_rng());
-    let pub_key_set = sec_key_share.public_keys();
+    let pub_key_set = &sec_key_share.public_keys();
 
     let rocket = rocket::build()
         .manage(RwLock::new(SharedState {
-            pub_key_set,
+            pub_key_set: pub_key_set.to_owned(),
             sec_key_share,
         }))
-        .mount("/", routes![get_public_key, encrypt, threshold_decrypt]);
+        .mount("/", routes![get_public_key, threshold_decrypt]);
 
     let client = Client::tracked(rocket).await?;
 
     // Encrypt a message
     let plaintext = "Hello, world!";
-    let encrypt_response = client
-        .post("/encrypt")
-        .header(ContentType::JSON)
-        .body(json!({ "plaintext": plaintext }).to_string())
-        .dispatch()
-        .await;
 
-    assert_eq!(encrypt_response.status(), Status::Ok);
-    let encrypt_response_json: EncryptionResponse = encrypt_response
-        .into_json()
-        .await
-        .ok_or_else(|| "Invalid Encryption response")?;
-    assert!(!encrypt_response_json.ciphertext.is_empty());
+    let pub_key = pub_key_set.public_key();
+    let ciphertext: Ciphertext = pub_key.encrypt(plaintext.as_bytes());
+
+    let ciphertext_str = serde_json::to_string(&ciphertext)?;
+    let ciphertext_base64 = general_purpose::STANDARD.encode(ciphertext_str.as_bytes());
 
     // Decrypt the message
     let decrypt_response = client
         .post("/decrypt")
         .header(ContentType::JSON)
-        .body(json!({ "ciphertext": encrypt_response_json.ciphertext }).to_string())
+        .body(json!({ "ciphertext": ciphertext_base64 }).to_string())
         .dispatch()
         .await;
 
@@ -93,7 +86,7 @@ async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or_else(|| "Invalid PublicKey response")?;
 
     let pub_key_set: PublicKeySet = serde_json::from_str(&pub_key_resp.pub_key_set)?;
-    let ciphertext_bytes = general_purpose::STANDARD.decode(&encrypt_response_json.ciphertext)?;
+    let ciphertext_bytes = general_purpose::STANDARD.decode(&ciphertext_base64)?;
     let ciphertext_str = String::from_utf8(ciphertext_bytes)?;
     let ciphertext: Ciphertext = serde_json::from_str(&ciphertext_str)?;
 

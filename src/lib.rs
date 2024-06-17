@@ -10,24 +10,12 @@ use rocket::{
 };
 use std::collections::HashMap;
 use std::sync::RwLock;
-use threshold_crypto::{
-    Ciphertext, DecryptionShare, PublicKey, PublicKeySet, SecretKeySet, SecretKeyShare,
-};
+use threshold_crypto::{Ciphertext, DecryptionShare, PublicKeySet, SecretKeySet, SecretKeyShare};
 
 pub const THRESHOLD: usize = 2;
 pub struct SharedState {
     pub pub_key_set: PublicKeySet,
     pub sec_key_share: SecretKeySet,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct EncryptionRequest {
-    pub plaintext: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct EncryptionResponse {
-    pub ciphertext: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -108,38 +96,6 @@ pub fn get_public_key(
     let pub_key_set =
         serde_json::to_string(&state.pub_key_set).map_err(|_| ServiceError::PublicKeyReadError)?;
     Ok(Json(PublicKeyResponse { pub_key_set }))
-}
-
-/// Encrypts the given plaintext using the public key set.
-///
-/// # Arguments
-///
-/// * `request` - A JSON body containing the plaintext to be encrypted.
-/// * `state` - The shared state containing the public key set.
-///
-/// # Returns
-///
-/// * `EncryptionResponse` - The response containing the ciphertext.
-///
-/// # Errors
-///
-/// This function will return an error if encryption fails.
-#[post("/encrypt", data = "<request>")]
-pub fn encrypt(
-    request: Json<EncryptionRequest>,
-    state: &State<RwLock<SharedState>>,
-) -> Result<Json<EncryptionResponse>, ServiceError> {
-    let state = state.read().map_err(|_| ServiceError::ServiceBusy)?;
-    let pub_key: PublicKey = state.pub_key_set.public_key();
-    let ciphertext: Ciphertext = pub_key.encrypt(request.plaintext.as_bytes());
-
-    let ciphertext_str =
-        serde_json::to_string(&ciphertext).map_err(|_| ServiceError::UnknownError)?;
-    let ciphertext_base64 = general_purpose::STANDARD.encode(ciphertext_str.as_bytes());
-
-    Ok(Json(EncryptionResponse {
-        ciphertext: ciphertext_base64,
-    }))
 }
 
 /// Decrypts the given ciphertext using the secret key shares.

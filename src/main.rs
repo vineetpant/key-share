@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate rocket;
 
-use key_share_service::{encrypt, get_public_key, threshold_decrypt, SharedState, THRESHOLD};
+use key_share_service::{get_public_key, threshold_decrypt, SharedState, THRESHOLD};
 use rocket::routes;
 use std::sync::RwLock;
 use threshold_crypto::SecretKeySet;
@@ -20,5 +20,5 @@ fn rocket() -> _ {
 
     rocket::build()
         .manage(RwLock::new(state))
-        .mount("/", routes![get_public_key, encrypt, threshold_decrypt])
+        .mount("/", routes![get_public_key, threshold_decrypt])
 }
